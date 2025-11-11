@@ -1,0 +1,16 @@
+fastapi==0.120.4
+uvicorn==0.38.0
+langchain==1.0.3
+langchain-community==0.4.1
+langchain-core==1.0.2
+neo4j==5.18.1
+langchain-neo4j==0.1.9
+deepseek==0.1.6
+python-multipart==0.0.20
+requests==2.32.5
+websockets==15.0.1
+pydantic==2.12.3
+python-dotenv==1.0.0
+# pip install ? -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+langchain-openai~=1.0.1
+serpapi~=0.1.5

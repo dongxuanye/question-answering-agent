@@ -1,0 +1,110 @@
+# 基础 Python 忽略规则
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Python Web 特有忽略
+# 配置文件（已包含 config.py）
+config.py
+config/*.py
+config/*.pyc
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+settings.pyc
+local_settings.py
+instance/  # Flask 实例文件夹
+*.ini      # 配置文件（如 uwsgi.ini）
+*.conf     # 服务配置（如 nginx 配置）
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# 日志与缓存
+logs/
+*.log
+debug.log
+error.log
+.cache/
+.flaskenv
+.pyre/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# Web 相关产物
+static/  # 若静态文件通过构建生成（如 npm 构建），需保留；若手动维护可注释
+media/   # 用户上传文件目录
+uploads/
+*.sqlite3  # 本地数据库（如 Django 默认数据库）
+*.db
+*.db-journal
+*.db-shm
+
+# 构建工具与依赖
+node_modules/  # 前端依赖（若前后端分离）
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+dist/  # 前端构建产物（如 React/Vue 构建后的文件）
+build/  # 前端构建产物
+.tmp/
+.npm/
+
+# 编辑器/IDE 配置（可选，根据个人使用工具添加）
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store  # Mac 系统文件
+Thumbs.db  # Windows 系统文件
+
+# 部署相关
+*.pid
+*.seed
+*.pid.lock
+uwsgi.log
+gunicorn.log
+celerybeat-schedule.db  # Celery 定时任务数据库
+celerybeat.pid
+
+# 测试相关
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+.junit/
+.pytest_cache/
+test-results/
