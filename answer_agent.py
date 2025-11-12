@@ -2,7 +2,6 @@ from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnableSequence
 from langchain_openai import ChatOpenAI
-from neo4j.exceptions import Neo4jError
 
 from config import DEEPSEEK_CONFIG
 from tools import search_tool,load_prompt, update_graph_tool

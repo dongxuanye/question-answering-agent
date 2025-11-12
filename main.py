@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List
 import time
 import os
+import asyncio
 from config import WORKFLOW_CONFIG
 from tools import get_graph_data, execute_neo4j_query
 from ask_agent import generate_question
@@ -59,8 +60,12 @@ async def websocket_endpoint(websocket: WebSocket):
 # ===================== API路由 =====================
 @app.get("/api/graph-data")
 async def fetch_graph_data():
+    print(f"[API] 收到图谱数据请求 - 时间: {time.time()}")
     try:
-        data = get_graph_data()
+        print("[API] 正在查询Neo4j（异步执行）...")
+        # 使用asyncio.to_thread将同步函数放到线程池执行，避免阻塞事件循环
+        data = await asyncio.to_thread(get_graph_data)
+        print(f"[API] 查询成功，节点数: {len(data.get('nodes', []))}, 边数: {len(data.get('edges', []))}")
         # 包裹前端要求的外层格式
         return {
             "code": 200,
@@ -69,6 +74,7 @@ async def fetch_graph_data():
         }
     except Exception as e:
         # 统一错误响应格式
+        print(f"[API] 图谱查询失败: {str(e)}")
         return {
             "code": 500,
             "message": f"图谱查询失败: {str(e)}",
@@ -96,9 +102,9 @@ async def run_workflow():
     try:
         ask_result={"status": "success"}
         while workflow_running and ask_count < WORKFLOW_CONFIG["max_ask_count"]:
-            # 1. 调用问智能体
+            # 1. 调用问智能体（放到线程池执行，避免阻塞事件循环）
             print(f"\n--- 第{ask_count + 1}轮：调用问智能体 ---")
-            ask_result = generate_question()
+            ask_result = await asyncio.to_thread(generate_question)
 
             # 关键判断：问智能体返回error（无实体）→ 终止工作流
             if ask_result["status"] == "error":
@@ -153,14 +159,14 @@ async def run_workflow():
             print(f"问智能体生成：问题={question}")
             print(f"  核心实体Label={entity_label}，实体名={entity_name}")
 
-            # 3. 调用答智能体
+            # 3. 调用答智能体（放到线程池执行，避免阻塞事件循环）
             print(f"--- 第{ask_count + 1}轮：调用答智能体 ---")
             answer_input = {
                 "question": question,
                 "entity_label": entity_label,
                 "entity_name": entity_name
             }
-            answer_result = generate_answer(answer_input)
+            answer_result = await asyncio.to_thread(generate_answer, answer_input)
             print("答智能体输出结果：",answer_result)
             
             # 推送答智能体结果给前端（包含分步执行结果）

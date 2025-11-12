@@ -1,18 +1,52 @@
 import os
 import re
+from queue import Queue
+from threading import Lock
 
 from langchain_community.graphs import Neo4jGraph
 from serpapi import Client
 
 from config import NEO4J_CONFIG, SERPAPI_CONFIG  # 导入SerpAPI配置
 
-# 初始化Neo4j连接
-graph = Neo4jGraph(
-    url=NEO4J_CONFIG["url"],
-    username=NEO4J_CONFIG["username"],
-    password=NEO4J_CONFIG["password"],
-    database=NEO4J_CONFIG["database"]
-)
+# ===================== Neo4j连接池 =====================
+class Neo4jConnectionPool:
+    """Neo4j连接池，支持并发查询"""
+    def __init__(self, config, pool_size=5):
+        self.config = config
+        self.pool_size = pool_size
+        self.pool = Queue(maxsize=pool_size)
+        self.lock = Lock()
+        self._init_pool()
+    
+    def _init_pool(self):
+        """初始化连接池"""
+        print(f"[连接池] 初始化Neo4j连接池，大小: {self.pool_size}")
+        for i in range(self.pool_size):
+            conn = Neo4jGraph(
+                url=self.config["url"],
+                username=self.config["username"],
+                password=self.config["password"],
+                database=self.config["database"]
+            )
+            self.pool.put(conn)
+            print(f"[连接池] 创建连接 {i+1}/{self.pool_size}")
+    
+    def get_connection(self):
+        """从连接池获取连接"""
+        conn = self.pool.get()
+        print(f"[连接池] 获取连接，剩余: {self.pool.qsize()}")
+        return conn
+    
+    def release_connection(self, conn):
+        """释放连接回连接池"""
+        self.pool.put(conn)
+        print(f"[连接池] 释放连接，剩余: {self.pool.qsize()}")
+
+# 初始化连接池
+neo4j_pool = Neo4jConnectionPool(NEO4J_CONFIG, pool_size=3)
+
+# 初始化默认Neo4j连接（用于工作流主线程）
+graph = neo4j_pool.get_connection()
 
 # 路径处理函数
 def get_project_root():
@@ -110,14 +144,18 @@ def update_graph_tool(cypher: str) -> dict:
 #         return {"error": f"图谱查询失败: {str(e)}"}, 500
 def get_graph_data():
     """工具a：查询知识图谱数据（适配前端要求格式）"""
+    query_graph = None
     try:
+        # 从连接池获取连接，避免与工作流冲突导致阻塞
+        query_graph = neo4j_pool.get_connection()
+        
         # 优化节点查询：同时获取 id、labels、properties（保持原有查询，后续格式化调整）
         nodes_query = "MATCH (n) RETURN id(n) as id, labels(n) as labels, properties(n) as properties"
         # 关系查询补充 id(r)，用于 edge 的唯一标识
         relationships_query = "MATCH (n)-[r]->(m) RETURN id(r) as edge_id, id(n) as source, id(m) as target, type(r) as type"
 
-        nodes = graph.query(nodes_query)  # 注意：Neo4j 4.x+ 推荐用 run() 而非 query()
-        relationships = graph.query(relationships_query)
+        nodes = query_graph.query(nodes_query)  # 使用连接池中的连接查询
+        relationships = query_graph.query(relationships_query)
 
         # 格式化节点：适配前端要求的字段
         formatted_nodes = [
@@ -146,6 +184,10 @@ def get_graph_data():
     except Exception as e:
         # 抛出异常，由上层接口统一处理错误响应
         raise Exception(str(e))
+    finally:
+        # 确保连接释放回连接池
+        if query_graph is not None:
+            neo4j_pool.release_connection(query_graph)
 
 
 def get_least_relationship_entity():
