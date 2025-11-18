@@ -9,6 +9,7 @@ from config import WORKFLOW_CONFIG
 from tools import get_graph_data, execute_neo4j_query
 from ask_agent import generate_question
 from answer_agent import generate_answer
+from cost_tracker import get_tracker
 
 app = FastAPI(title="知识图谱问答智能体")
 
@@ -99,6 +100,12 @@ async def handle_signal(request: SignalRequest, background_tasks: BackgroundTask
 async def run_workflow():
     global workflow_running, ask_count
     print("工作流启动，开始问答循环...")
+    
+    # 开始追踪消耗
+    tracker = get_tracker()
+    tracker.reset()  # 重置之前的统计
+    tracker.start_workflow()
+    
     try:
         ask_result={"status": "success"}
         while workflow_running and ask_count < WORKFLOW_CONFIG["max_ask_count"]:
@@ -216,6 +223,10 @@ async def run_workflow():
         print(error_msg)
     finally:
         workflow_running = False  # 确保最终重置工作流状态
+        
+        # 结束追踪并打印统计表格
+        tracker.end_workflow()
+        tracker.print_table()
 
 if __name__ == "__main__":
     import uvicorn

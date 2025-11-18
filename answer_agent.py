@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 
 from config import DEEPSEEK_CONFIG
 from tools import search_tool,load_prompt, update_graph_tool
+from cost_tracker import get_tracker
 import re
 
 # 加载提示词
@@ -31,6 +32,10 @@ def process_question(inputs: dict) -> dict:
         print(error_msg)
         msg = HumanMessage(content=error_msg)
         return {"question": question, "agent_scratchpad": [msg]}
+    
+    # 记录搜索工具调用
+    tracker = get_tracker()
+    tracker.record_answer_search_call()
     
     search_result = search_tool(question)
     
@@ -178,6 +183,7 @@ answer_agent_chain = RunnableSequence(
     llm_chain,
     lambda x: {
         "llm_output": x.content.strip() if hasattr(x, "content") else str(x),
+        "llm_response": x,  # 保存原始响应对象，用于提取Token信息
         "graph_update_result": update_graph_tool(extract_cypher(x.content.strip() if hasattr(x, "content") else str(x)))
     }
 )
@@ -240,9 +246,30 @@ def generate_answer(ask_agent_output: dict) -> dict:
             "entity_label": entity_label,
             "entity_name": entity_name
         }
+        # invoke阻塞式调用大模型
         chain_result = answer_agent_chain.invoke(chain_input)
         llm_output = chain_result["llm_output"]
         print(f"📌 LLM原始输出：\n{llm_output}")
+        
+        # 记录LLM token消耗
+        tracker = get_tracker()
+        llm_response = chain_result.get("llm_response")
+        if llm_response and hasattr(llm_response, "usage_metadata") and llm_response.usage_metadata:
+            input_tokens = llm_response.usage_metadata.get("input_tokens", 0)
+            output_tokens = llm_response.usage_metadata.get("output_tokens", 0)
+            tracker.record_answer_llm_call(input_tokens, output_tokens)
+            print(f"[统计] 答智能体LLM调用 - 输入:{input_tokens} token, 输出:{output_tokens} token")
+        elif llm_response and hasattr(llm_response, "response_metadata") and "token_usage" in llm_response.response_metadata:
+            # 兼容旧版本Langchain
+            token_usage = llm_response.response_metadata["token_usage"]
+            input_tokens = token_usage.get("prompt_tokens", 0)
+            output_tokens = token_usage.get("completion_tokens", 0)
+            tracker.record_answer_llm_call(input_tokens, output_tokens)
+            print(f"[统计] 答智能体LLM调用 - 输入:{input_tokens} token, 输出:{output_tokens} token")
+        else:
+            # 无法获取token信息，仅计数
+            tracker.record_answer_llm_call(0, 0)
+            print(f"[统计] 答智能体LLM调用 - 无法获取token信息")
 
         # 提取答案
         answer_lines = [line.strip() for line in llm_output.split("\n") if line.strip().startswith("回复结果：")]
@@ -264,6 +291,13 @@ def generate_answer(ask_agent_output: dict) -> dict:
                 
                 result["data"]["graph_update_summary"] = execution_result.get("summary", "执行完成")
                 result["data"]["cypher_steps"] = execution_result.get("details", [])
+                
+                # 记录Cypher执行次数（统计成功+跳过的语句数）
+                statement_count = len([step for step in execution_result.get("details", []) 
+                                      if step.get("status") in ["success", "skipped"]])
+                if statement_count > 0:
+                    tracker.record_cypher_execution(statement_count)
+                    print(f"[统计] Cypher执行 - 成功执行{statement_count}条语句")
                 
                 # 根据执行结果调整状态
                 if execution_result["status"] == "error":

@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 
 from config import DEEPSEEK_CONFIG
 from tools import get_least_relationship_entity,load_prompt
+from cost_tracker import get_tracker
 
 # 2. 直接加载整合后的提示词（无需再拼接enhanced_prompt_text）
 ask_agent_prompt_text = load_prompt("ask_agent_prompt.txt")
@@ -32,6 +33,10 @@ llm = ChatOpenAI(
 # 步骤1：修改工具调用函数（用 HumanMessage 包装结果，无需 tool_call_id）
 def call_least_entity_tool(inputs: dict) -> dict:
     try:
+        # 记录数据库查询
+        tracker = get_tracker()
+        tracker.record_ask_cypher_query()
+        
         entity_info = get_least_relationship_entity()
         entity_name = entity_info.get("name", "") if isinstance(entity_info, dict) else ""
         entity_label = entity_info.get("label", "") if isinstance(entity_info, dict) else ""
@@ -99,6 +104,25 @@ def generate_question() -> dict:
         # 2. 有有效实体 → 继续生成问题
         chain_result = ask_agent_chain.invoke(tool_result)
         raw_output = chain_result.content.strip() if hasattr(chain_result, "content") else str(chain_result)
+        
+        # 记录LLM token消耗
+        tracker = get_tracker()
+        if hasattr(chain_result, "usage_metadata") and chain_result.usage_metadata:
+            input_tokens = chain_result.usage_metadata.get("input_tokens", 0)
+            output_tokens = chain_result.usage_metadata.get("output_tokens", 0)
+            tracker.record_ask_llm_call(input_tokens, output_tokens)
+            print(f"[统计] 问智能体LLM调用 - 输入:{input_tokens} token, 输出:{output_tokens} token")
+        elif hasattr(chain_result, "response_metadata") and "token_usage" in chain_result.response_metadata:
+            # 兼容旧版本Langchain
+            token_usage = chain_result.response_metadata["token_usage"]
+            input_tokens = token_usage.get("prompt_tokens", 0)
+            output_tokens = token_usage.get("completion_tokens", 0)
+            tracker.record_ask_llm_call(input_tokens, output_tokens)
+            print(f"[统计] 问智能体LLM调用 - 输入:{input_tokens} token, 输出:{output_tokens} token")
+        else:
+            # 无法获取token信息，仅计数
+            tracker.record_ask_llm_call(0, 0)
+            print(f"[统计] 问智能体LLM调用 - 无法获取token信息")
 
         # 从工具结果中提取Label和实体名
         entity_info = get_least_relationship_entity()
